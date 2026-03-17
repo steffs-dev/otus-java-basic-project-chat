@@ -1,5 +1,9 @@
 package ru.otus.basic.project;
 
+/**
+ * Перечисление всех команд, используемых в чате.
+ * Каждая команда имеет строковое представление (например, "/login").
+ */
 public enum Commands {
 
     LOGIN ("/login"),
@@ -7,13 +11,18 @@ public enum Commands {
     WRITE_DIRECT ("/w"),
     LOGOUT ("/kick"),
     DELETE ("/delete"),
-    GRANT_ADMIN_PRIVILEGES("/gadmin"),
-    EXIT ("/exit");
+    GRANT_PRIVILEGES("/gpriv"),
+    EXIT ("/exit"),
+    BACK ("/back"),
+    MY_INFO("/myinfo"),
+    UNKNOWN ("");
 
-    private String command;
+    private final String command;
+
     Commands(String command) {
         this.command = command;
     }
+
     public String getCommand() {
         return command;
     }

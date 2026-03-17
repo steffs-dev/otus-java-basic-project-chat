@@ -1,10 +1,11 @@
 package ru.otus.basic.project;
 
-import java.io.IOException;
-
+/**
+ * Точка входа в серверное приложение.
+ */
 public class ServerApp {
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
         Server server = new Server();
         server.startServer();
     }
