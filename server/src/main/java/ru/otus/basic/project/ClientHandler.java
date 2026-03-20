@@ -185,10 +185,13 @@ public class ClientHandler implements Runnable {
                 }
             } else if (split[0].equals(Commands.DELETE.getCommand())) {
                 if (server.getRole(this.nickname).equals(Roles.ADMIN)) {
-                    ClientHandler clientHandler = server.getClientHandler(split[1]);
-                    if (server.isLoggedIn(split[1])) {
-                        clientHandler.sendMessage(Commands.LOGOUT.getCommand());
-                        clientHandler.setRunning(false);
+                    if (server.isRegistered(split[1])) {
+                        if (server.isLoggedIn(split[1])) {
+                            ClientHandler clientHandler = server.getClientHandler(split[1]);
+                            clientHandler.sendMessage(Commands.LOGOUT.getCommand());
+                            clientHandler.setRunning(false);
+                            server.removeClientFromCash(split[1]);
+                        }
                         server.unsubscribe(split[1]);
                         sendMessage(ConsoleColors.BLUE_BOLD + "Пользователь " + split[1] +
                                 " удален" + ConsoleColors.RESET);

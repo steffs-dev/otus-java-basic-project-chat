@@ -3,6 +3,7 @@ package ru.otus.basic.project;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.sql.SQLException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -18,20 +19,37 @@ import java.util.concurrent.ThreadFactory;
  * security - экземпляр класса безопасности
  * clientHandlers - мапа для хранения пары ник пользователя - обработчик пользователя
  * для подключенных к чату пользователей
+ * dbService - сервис для работы с БД
  */
 public class Server {
     private final int PORT = 8081;
     private final ExecutorService executorService;
-    private final Security security;
     private final Map<String, ClientHandler> clientHandlers;
+    private final DBService dbService;
 
     /**
-     * Создает сервер: инициализирует пул потоков, хранилище безопасности и мапу клиентов.
+     * Создает сервер: инициализирует пул потоков, создает таблицу зарегистрированных
+     * пользователей, добавляет первого администратора и мапу клиентов.
      */
     public Server() {
         clientHandlers = new ConcurrentHashMap<>();
         executorService = Executors.newCachedThreadPool(getThread());
-        security = new Security();
+        try {
+            dbService = new DBService();
+        } catch (SQLException e) {
+            throw new RuntimeException("Ошибка при подключении к БД. " + e);
+        }
+        try {
+            dbService.createTable();
+        } catch (SQLException e) {
+            throw new RuntimeException("Ошибка при создании таблицы пользователей. " + e);
+        }
+        try {
+            dbService.insertFirstAdmin();
+        } catch (SQLException e) {
+            throw new RuntimeException("Ошибка при добавлении администратора" + e);
+        }
+
         System.out.println("Server started!");
     }
 
@@ -72,10 +90,10 @@ public class Server {
      * Проверяет, зарегистрирован ли пользователь.
      *
      * @param nickname логин
-     * @return true, если есть в базе
+     * @return true, если есть в БД
      */
     public boolean isRegistered(String nickname) {
-        return security.isRegistered(nickname);
+        return dbService.findByNickname(nickname);
     }
 
     /**
@@ -83,10 +101,10 @@ public class Server {
      *
      * @param nickname логин
      * @param password пароль
-     * @return true, если верны
+     * @return true, если в БД есть запись с заданными логином и паролем
      */
     public boolean isAuthenticated(String nickname, String password) {
-        return security.isAuthenticated(nickname, password);
+        return dbService.findByNicknameAndPassword(nickname, password);
     }
 
     /**
@@ -117,7 +135,7 @@ public class Server {
      * @return роль
      */
     public Roles getRole(String nickname) {
-        return security.getRole(nickname);
+        return dbService.getRoleByNickname(nickname);
     }
 
     /**
@@ -127,12 +145,16 @@ public class Server {
      * @param role     новая роль
      */
     public void setRole(String nickname, Roles role) {
-        security.setRole(nickname, role);
+        if (dbService.updateRole(nickname, role) != 1) {
+            System.out.println(ConsoleColors.RED + "Ошибка при обновлении роли пользователя " +
+                    nickname + " на " + role.getRoleDescription() + " в БД" + ConsoleColors.RESET);
+        }
     }
 
     /**
-     * Добавляет нового пользователя в мапу зарегистрированных пользователей (authPairs),
+     * Добавляет нового пользователя в мапу зарегистрированных пользователей БД,
      * в список подключенных к чату пользователей (clientHandlers)
+     * Исключена операция добавления для пользователя с
      *
      * @param nickname      логин
      * @param password      пароль
@@ -141,13 +163,17 @@ public class Server {
     public void subscribe(String nickname, String password, ClientHandler clientHandler) {
         try {
             clientHandlers.put(nickname, clientHandler);
-            security.addClientCredentials(nickname, password);
+            if (!isRegistered(nickname) && dbService.insert(nickname, password) != 1) {
+                return;
+            }
+
             broadcast(ConsoleColors.BLUE_BOLD + "Подключен новый пользователь " +
                     nickname + ConsoleColors.RESET, clientHandler, MessageSettings.NOT_SEND_TO_PUBLISHER);
             System.out.println(ConsoleColors.BLUE_BOLD + "Подключен новый пользователь " +
                     nickname + ConsoleColors.RESET);
         } catch (Exception e) {
-            System.out.println(ConsoleColors.RED + "Ошибка при добавлении пользователя" + ConsoleColors.RESET);
+            System.out.println(ConsoleColors.RED + "Ошибка при добавлении пользователя"
+                    + ConsoleColors.RESET);
             e.printStackTrace();
         }
     }
@@ -170,8 +196,12 @@ public class Server {
      */
     public void unsubscribe(String nickname) {
         try {
-            removeClientFromCash(nickname);
-            security.deleteAuthPair(nickname);
+            if (dbService.delete(nickname) != 1) {
+                System.out.println(ConsoleColors.RED + "Ошибка при удалении пользователя " +
+                        nickname + " из БД" + ConsoleColors.RESET);
+                return;
+            }
+
             System.out.println(ConsoleColors.BLUE_BOLD + "Пользователь " + nickname + " удален" + ConsoleColors.RESET);
         } catch (Exception e) {
             System.out.println(ConsoleColors.RED + "Ошибка при удалении пользователя" + ConsoleColors.RESET);
