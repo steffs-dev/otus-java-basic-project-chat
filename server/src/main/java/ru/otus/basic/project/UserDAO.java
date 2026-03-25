@@ -1,27 +1,27 @@
 package ru.otus.basic.project;
 
-import java.sql.ResultSet;
+import ru.otus.basic.project.Entities.User;
+
 import java.sql.SQLException;
+import java.util.Optional;
 
 /**
  * Интерфейс Data Access Object (DAO) для работы с таблицей зарегистрированных пользователей.
  * Определяет основные операции: создание таблицы, вставка, поиск, обновление роли, удаление.
  */
-public interface DAO {
-
-    void createTable() throws SQLException;
+public interface UserDAO {
 
     void insertFirstAdmin() throws SQLException;
 
-    int insert(String nickname, String password);
+    Optional<User> insert(User user) throws SQLException;
 
     boolean findByNickname(String nickname);
 
-    boolean findByNicknameAndPassword(String nickname, String password);
+    Optional<User> findByNicknameAndPassword(String nickname, String password) throws SQLException;
 
-    String getRoleByNickname(String nickname);
+    Optional<Roles> getRoleByNickname(String nickname) throws SQLException;
 
-    int updateRole(String nickname, Roles role);
+    int updateRole(String nickname, Roles role) throws SQLException;
 
-    int delete(String nickname);
+    int delete(String nickname) throws SQLException;
 }

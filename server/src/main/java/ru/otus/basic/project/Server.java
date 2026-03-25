@@ -1,10 +1,13 @@
 package ru.otus.basic.project;
 
+import ru.otus.basic.project.Entities.User;
+
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.sql.SQLException;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -24,7 +27,7 @@ import java.util.concurrent.ThreadFactory;
 public class Server {
     private final int PORT = 8081;
     private final ExecutorService executorService;
-    private final Map<String, ClientHandler> clientHandlers;
+    private final Map<User, ClientHandler> clientHandlers;
     private final DBService dbService;
 
     /**
@@ -38,11 +41,6 @@ public class Server {
             dbService = new DBService();
         } catch (SQLException e) {
             throw new RuntimeException("Ошибка при подключении к БД. " + e);
-        }
-        try {
-            dbService.createTable();
-        } catch (SQLException e) {
-            throw new RuntimeException("Ошибка при создании таблицы пользователей. " + e);
         }
         try {
             dbService.insertFirstAdmin();
@@ -97,27 +95,21 @@ public class Server {
     }
 
     /**
-     * Проверяет корректность пары логин/пароль.
-     *
-     * @param nickname логин
-     * @param password пароль
-     * @return true, если в БД есть запись с заданными логином и паролем
-     */
-    public boolean isAuthenticated(String nickname, String password) {
-        return dbService.findByNicknameAndPassword(nickname, password);
-    }
-
-    /**
      * Проверяет, находится ли пользователь в сети (есть ли обработчик).
-     * Для проверки, чтобы не было возможности повторно войти в чат под тем же логином
+     * В т.ч.для проверки, чтобы не было возможности повторно войти в чат под тем же логином
      *
      * @param nickname логин
      * @return true, если онлайн
      */
     public boolean isLoggedIn(String nickname) {
-        return clientHandlers.containsKey(nickname);
+        return findUserByNickname(nickname).isPresent();
     }
 
+    private Optional<User> findUserByNickname(String nickname) {
+        return clientHandlers.keySet().stream()
+                .filter(u -> u.getName().equals(nickname))
+                .findFirst();
+    }
     /**
      * Геттер для обработчика клиента.
      *
@@ -125,7 +117,9 @@ public class Server {
      * @return обработчик или null
      */
     public ClientHandler getClientHandler(String nickname) {
-        return clientHandlers.get(nickname);
+        return findUserByNickname(nickname)
+                .map(clientHandlers::get)
+                .orElse(null);
     }
 
     /**
@@ -148,7 +142,17 @@ public class Server {
         if (dbService.updateRole(nickname, role) != 1) {
             System.out.println(ConsoleColors.RED + "Ошибка при обновлении роли пользователя " +
                     nickname + " на " + role.getRoleDescription() + " в БД" + ConsoleColors.RESET);
+        return;
         }
+        findUserByNickname(nickname).ifPresent(user -> user.setRole(role));
+    }
+
+    public Optional<User> saveUser(String nickname, String password) {
+        return dbService.insert(nickname, password);
+    }
+
+    public Optional<User> checkCredentials(String nickname, String password) {
+        return dbService.findByNicknameAndPassword(nickname, password);
     }
 
     /**
@@ -156,21 +160,16 @@ public class Server {
      * в список подключенных к чату пользователей (clientHandlers)
      * Исключена операция добавления для пользователя с
      *
-     * @param nickname      логин
-     * @param password      пароль
+     * @param user      пользователь
      * @param clientHandler обработчик
      */
-    public void subscribe(String nickname, String password, ClientHandler clientHandler) {
+    public void subscribe(User user, ClientHandler clientHandler) {
         try {
-            clientHandlers.put(nickname, clientHandler);
-            if (!isRegistered(nickname) && dbService.insert(nickname, password) != 1) {
-                return;
-            }
-
+            clientHandlers.put(user, clientHandler);
             broadcast(ConsoleColors.BLUE_BOLD + "Подключен новый пользователь " +
-                    nickname + ConsoleColors.RESET, clientHandler, MessageSettings.NOT_SEND_TO_PUBLISHER);
+                    user.getName() + ConsoleColors.RESET, clientHandler, MessageSettings.NOT_SEND_TO_PUBLISHER);
             System.out.println(ConsoleColors.BLUE_BOLD + "Подключен новый пользователь " +
-                    nickname + ConsoleColors.RESET);
+                    user.getName() + ConsoleColors.RESET);
         } catch (Exception e) {
             System.out.println(ConsoleColors.RED + "Ошибка при добавлении пользователя"
                     + ConsoleColors.RESET);
@@ -181,11 +180,14 @@ public class Server {
     /**
      * Удаляет клиента из списка подключенных к чату пользователей.
      *
-     * @param nickname логин
+     * @param nickname ник пользователя
      */
     public void removeClientFromCash(String nickname) {
-        clientHandlers.remove(nickname);
-        System.out.println(ConsoleColors.BLUE_BOLD + "Пользователь " + nickname + " отключен" + ConsoleColors.RESET);
+        findUserByNickname(nickname).ifPresent(user -> {
+            clientHandlers.remove(user);
+            System.out.println(ConsoleColors.BLUE_BOLD + "Пользователь " + user.getName() +
+                    " отключен" + ConsoleColors.RESET);
+        });
     }
 
     /**

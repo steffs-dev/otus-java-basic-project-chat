@@ -1,10 +1,13 @@
 package ru.otus.basic.project;
 
+import ru.otus.basic.project.Entities.User;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.Optional;
 
 /**
  * Обработчик клиента на стороне сервера.
@@ -82,11 +85,13 @@ public class ClientHandler implements Runnable {
                     handleCommand(line);
                 } else {
                     server.broadcast(ConsoleColors.PURPLE_BOLD + nickname + ": " +
-                            ConsoleColors.WHITE_UNDERLINED + line + ConsoleColors.RESET, this, MessageSettings.NOT_SEND_TO_PUBLISHER);
+                            ConsoleColors.WHITE_UNDERLINED + line + ConsoleColors.RESET,
+                            this, MessageSettings.NOT_SEND_TO_PUBLISHER);
                 }
             }
         } catch (IOException e) {
-            System.out.println(ConsoleColors.RED + "Пользователь: " + nickname + ". " + e.getMessage() + ConsoleColors.RESET);
+            System.out.println(ConsoleColors.RED + "Пользователь: " + nickname + ". " +
+                    e.getMessage() + ConsoleColors.RESET);
         } finally {
             server.removeClientFromCash(nickname);
             disconnect();
@@ -113,9 +118,14 @@ public class ClientHandler implements Runnable {
         if (split.length == 3) {
             if (split[0].equals(Commands.REGISTER.getCommand())) {
                 if (!server.isRegistered(split[1])) {
-                    server.subscribe(split[1], split[2], this);
-                    nickname = split[1];
-                    sendMessage("loginCompleted");
+                    Optional<User> optionalUser = server.saveUser(split[1], split[2]);
+                    if (optionalUser.isPresent()) {
+                        server.subscribe(optionalUser.get(), this);
+                        nickname = split[1];
+                        sendMessage("loginCompleted");
+                    } else {
+                        sendMessage("registrationFailed");
+                    }
                 } else {
                     sendMessage("registrationFailed");
                 }
@@ -124,21 +134,22 @@ public class ClientHandler implements Runnable {
                     sendMessage("authFailedAlreadyLoggedIn");
                     return;
                 }
-                if (server.isAuthenticated(split[1], split[2])) {
-                    server.subscribe(split[1], split[2], this);
+                Optional<User> optionalUser = server.checkCredentials(split[1], split[2]);
+                if (optionalUser.isPresent()) {
+                    server.subscribe(optionalUser.get(), this);
                     nickname = split[1];
                     sendMessage("loginCompleted");
                 } else {
                     sendMessage("authFailed");
                 }
             } else if (split[0].equals(Commands.WRITE_DIRECT.getCommand())) {
-                ClientHandler clientHandler = server.getClientHandler(split[1]);
+                ClientHandler target = server.getClientHandler(split[1]);
                 if (server.isLoggedIn(split[1])) {
-                    clientHandler.sendMessage(ConsoleColors.PURPLE_BOLD + nickname + ": " +
+                    target.sendMessage(ConsoleColors.PURPLE_BOLD + nickname + ": " +
                             ConsoleColors.WHITE_UNDERLINED + split[2] + ConsoleColors.RESET);
                 } else {
-                    sendMessage(ConsoleColors.RED + "Не удалось отправить сообщение, т.к. сокет пользователя " +
-                            split[1] + " закрыт" + ConsoleColors.RESET);
+                    sendMessage(ConsoleColors.RED + "Не удалось отправить сообщение, т.к. сокет " +
+                            "пользователя " + split[1] + " закрыт" + ConsoleColors.RESET);
                 }
             } else if (split[0].toLowerCase().equals
                     (Commands.GRANT_PRIVILEGES.getCommand())) {
@@ -147,9 +158,12 @@ public class ClientHandler implements Runnable {
                         try {
                             Roles role = Roles.valueOf(split[2].toUpperCase());
                             server.setRole(split[1], role);
-                            server.getClientHandler(split[1]).sendMessage(ConsoleColors.BLUE +
-                                    "Ваша роль изменена на " + ConsoleColors.BLUE_BOLD +
-                                    role.getRoleDescription() + ConsoleColors.RESET);
+                            ClientHandler target = server.getClientHandler(split[1]);
+                            if (target != null) {
+                                target.sendMessage(ConsoleColors.BLUE +
+                                        "Ваша роль изменена на " + ConsoleColors.BLUE_BOLD +
+                                        role.getRoleDescription() + ConsoleColors.RESET);
+                            }
                             sendMessage(ConsoleColors.BLUE + "Роль пользователя " + split[1] +
                                     " изменена на " + ConsoleColors.BLUE_BOLD +
                                     role.getRoleDescription() + ConsoleColors.RESET);
@@ -168,14 +182,12 @@ public class ClientHandler implements Runnable {
         } else if (split.length == 2) {
             if (split[0].equals(Commands.LOGOUT.getCommand())) {
                 if (server.getRole(this.nickname).equals(Roles.ADMIN)) {
-                    ClientHandler clientHandler = server.getClientHandler(split[1]);
+                    ClientHandler target = server.getClientHandler(split[1]);
                     if (server.isLoggedIn(split[1])) {
-                        clientHandler.setRunning(false);
-                        clientHandler.sendMessage(Commands.LOGOUT.getCommand());
-                        server.removeClientFromCash(split[1]);
+                        target.sendMessage(Commands.LOGOUT.getCommand());
                         server.broadcast(ConsoleColors.BLUE_BOLD + "Пользователь " +
                                 split[1] + " отключен" + ConsoleColors.RESET, this, MessageSettings.SENT_TO_ALL);
-                        clientHandler.disconnect();
+                        target.setRunning(false);
                     } else {
                         sendMessage(ConsoleColors.RED + "Не удалось отключить пользователя " +
                                 split[1] + ", т.к. сокет пользователя закрыт" + ConsoleColors.RESET);
@@ -190,7 +202,6 @@ public class ClientHandler implements Runnable {
                             ClientHandler clientHandler = server.getClientHandler(split[1]);
                             clientHandler.sendMessage(Commands.LOGOUT.getCommand());
                             clientHandler.setRunning(false);
-                            server.removeClientFromCash(split[1]);
                         }
                         server.unsubscribe(split[1]);
                         sendMessage(ConsoleColors.BLUE_BOLD + "Пользователь " + split[1] +
@@ -208,7 +219,7 @@ public class ClientHandler implements Runnable {
                 sendMessage(Commands.EXIT.getCommand());
                 server.broadcast(ConsoleColors.BLUE_BOLD + "Пользователь " + nickname +
                         " отключился" + ConsoleColors.RESET, this, MessageSettings.SENT_TO_ALL);
-                server.removeClientFromCash(nickname);
+                setRunning(false);
             } else if (split[0].equals(Commands.MY_INFO.getCommand())) {
                 sendMessage(ConsoleColors.BLUE + "Информация о пользователе:\n" +
                         "ник: " + ConsoleColors.BLUE_BOLD + nickname + "\n" +
