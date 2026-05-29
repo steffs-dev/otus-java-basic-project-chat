@@ -11,19 +11,19 @@ import java.util.Optional;
  * Реализация интерфейса DAO для PostgreSQL.
  * Использует одно соединение с БД, полученное из класса Repository.
  */
-public class UserDAO_Impl implements UserDAO {
+public class UserDao_Impl implements UserDao {
     private final String initAdminName = "Admin";
     private final String initAdminPWD = "admin";
     Connection connection;
 
-    private static final Logger logger = LogManager.getLogger(UserDAO_Impl.class);
+    private static final Logger logger = LogManager.getLogger(UserDao_Impl.class);
 
     /**
      * Конструктор создает репозиторий и получает из него соединение.
      *
      * @throws SQLException если не удается создать репозиторий (ошибка подключения)
      */
-    public UserDAO_Impl() throws SQLException {
+    public UserDao_Impl() throws SQLException {
         Repository repository = new Repository();
         connection = repository.getConnection();
     }

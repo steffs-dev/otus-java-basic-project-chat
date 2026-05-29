@@ -9,7 +9,7 @@ import java.util.Optional;
  * Интерфейс Data Access Object (DAO) для работы с таблицей зарегистрированных пользователей.
  * Определяет основные операции: создание таблицы, вставка, поиск, обновление роли, удаление.
  */
-public interface UserDAO {
+public interface UserDao {
 
     void insertFirstAdmin() throws SQLException;
 

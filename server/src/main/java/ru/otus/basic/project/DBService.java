@@ -12,7 +12,7 @@ import java.util.Optional;
  * Скрывает детали работы с ResultSet и обработку исключений.
  */
 public class DBService {
-    UserDAO userDao;
+    UserDao userDao;
 
     private static final Logger logger = LogManager.getLogger(DBService.class);
 
@@ -22,7 +22,7 @@ public class DBService {
      * @throws SQLException если не удается инициализировать DAO (проблемы с подключением)
      */
     public DBService() throws SQLException {
-        userDao = new UserDAO_Impl();
+        userDao = new UserDao_Impl();
     }
 
     /**
